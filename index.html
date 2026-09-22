@@ -814,6 +814,26 @@
       background: color-mix(in srgb, var(--danger) 14%, transparent);
     }
 
+    #doneEditingBtn {
+      width: 100%;
+      border: none;
+      background: var(--accent-gradient);
+      background-size: 180% 180%;
+      color: #fff;
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 14.5px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'Inter';
+      margin-bottom: 4px;
+      box-shadow: var(--shadow);
+    }
+
+    #doneEditingBtn:active {
+      transform: scale(.98);
+    }
+
     .sheet {
       background: var(--surface);
       border-radius: var(--radius);
@@ -1204,6 +1224,23 @@
     .typechoice button.picked {
       color: #fff;
       background: var(--accent);
+    }
+
+    .typedef-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .typedef-row .typedef-emoji {
+      width: 52px;
+      flex: none;
+      text-align: center;
+      font-size: 18px;
+    }
+
+    .typedef-row .typedef-label {
+      flex: 1;
     }
 
     .colorpick {
@@ -1628,12 +1665,14 @@
           <button class="backbtn" id="backFromContent">‹</button>
           <div class="screen-title" id="contentScreenTitle">—</div>
           <div class="spacer"></div>
+          <button class="copybtn" id="editContentBtn" title="Éditer" style="display:none;">✎ Éditer</button>
           <button class="copybtn" id="copyContentBtn" title="Copier le cours">⧉ Copier</button>
         </div>
 
         <div id="textArea">
           <div id="ribbon">
             <div class="ribbon-inner">
+              <button id="doneEditingBtn">✓ Terminer</button>
               <div class="rgroup">
                 <span class="rgroup-label">Police</span>
                 <div class="rrow">
@@ -1709,7 +1748,7 @@
         <div id="siteArea" style="display:none;">
           <div class="viewer-wrap">
             <div class="viewer-bar">
-              <span>🌐 Visionneur</span>
+              <span id="viewerBarLabel">🌐 Visionneur</span>
               <div class="spacer"></div>
               <a id="viewerOpenLink" href="#" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet ↗</a>
             </div>
@@ -1725,7 +1764,7 @@
         <div id="videoTabArea" style="display:none;">
           <div class="viewer-wrap">
             <div class="viewer-bar">
-              <span>🎬 Vidéo</span>
+              <span id="videoTabBarLabel">🎬 Vidéo</span>
             </div>
             <div class="viewer-editbar" id="videoTabEditbar">
               <input type="url" id="videoTabUrlInput" placeholder="https://youtube.com/... ou lien .mp4">
@@ -1913,8 +1952,21 @@
     })();
 
     /* ===================== état ===================== */
+    const DEFAULT_TYPE_DEFS = {
+      text: { emoji: "📝", label: "Texte" },
+      site: { emoji: "🌐", label: "Site" },
+      video: { emoji: "🎬", label: "Vidéo" }
+    };
+    function getTypeDefs() {
+      const saved = (state.meta && state.meta.typeDefs) || {};
+      return {
+        text: { ...DEFAULT_TYPE_DEFS.text, ...(saved.text || {}) },
+        site: { ...DEFAULT_TYPE_DEFS.site, ...(saved.site || {}) },
+        video: { ...DEFAULT_TYPE_DEFS.video, ...(saved.video || {}) }
+      };
+    }
     let state = {
-      meta: { title: "Cours 109", matiere: "", prof: "", logo: "" },
+      meta: { title: "Cours 109", matiere: "", prof: "", logo: "", typeDefs: {} },
       mainTabs: [],
       subTabs: {},
       contents: {}
@@ -1941,6 +1993,7 @@
     const subList = document.getElementById("subList");
     const subScreenTitle = document.getElementById("subScreenTitle");
     const contentScreenTitle = document.getElementById("contentScreenTitle");
+    const editContentBtn = document.getElementById("editContentBtn");
     const textArea = document.getElementById("textArea");
     const siteArea = document.getElementById("siteArea");
     const sheet = document.getElementById("sheet");
@@ -2253,15 +2306,17 @@
       }
       items.forEach((st, idx) => {
         if (!st.color) st.color = randomTabColor();
+        const defs = getTypeDefs();
+        const td = defs[st.type] || defs.text;
         const el = document.createElement("div");
         el.className = "row";
         el.style.setProperty("--tint", tint(st.color));
         el.style.setProperty("--bar", st.color);
         el.innerHTML = `
-      <span class="typeicon" style="background:${st.color}; color:#fff;">${st.type === "site" ? "🌐" : st.type === "video" ? "🎬" : "📝"}</span>
+      <span class="typeicon" style="background:${st.color}; color:#fff;">${td.emoji}</span>
       <div class="rowtext">
         <div class="rowtitle" spellcheck="false">${escapeHtml(st.title)}</div>
-        <div class="rowmeta">${st.type === "site" ? "Site" : st.type === "video" ? "Vidéo" : "Texte"}</div>
+        <div class="rowmeta">${escapeHtml(td.label)}</div>
       </div>
       ${unlocked ? `<div class="rowbtns">${idx > 0 ? '<button class="rowbtn up" title="Monter">↑</button>' : ""}${idx < items.length - 1 ? '<button class="rowbtn down" title="Descendre">↓</button>' : ""}<button class="rowbtn edit" title="Modifier">✎</button><button class="rowbtn del" title="Supprimer">✕</button></div>` : ""}
       <span class="chev">›</span>`;
@@ -2329,6 +2384,7 @@
 
     function openSubModal(existing) {
       let type = existing ? existing.type : "text";
+      const defs = getTypeDefs();
       overlay.classList.add("show");
       modal.className = "modal wide";
       modal.innerHTML = `
@@ -2337,9 +2393,9 @@
     <input type="text" id="subTitleField" placeholder="Ex. Notes du cours">
     <label>Type de contenu</label>
     <div class="typechoice">
-      <button type="button" id="pickText">📝 Texte</button>
-      <button type="button" id="pickSite">🌐 Site</button>
-      <button type="button" id="pickVideo">🎬 Vidéo</button>
+      <button type="button" id="pickText">${defs.text.emoji} ${escapeHtml(defs.text.label)}</button>
+      <button type="button" id="pickSite">${defs.site.emoji} ${escapeHtml(defs.site.label)}</button>
+      <button type="button" id="pickVideo">${defs.video.emoji} ${escapeHtml(defs.video.label)}</button>
     </div>
     <div id="urlWrap" style="display:none;">
       <label id="urlWrapLabel">Adresse du site</label>
@@ -2363,10 +2419,10 @@
         btnVideo.classList.toggle("picked", type === "video");
         urlWrap.style.display = (type === "site" || type === "video") ? "block" : "none";
         if (type === "video") {
-          urlWrapLabel.textContent = "Adresse de la vidéo";
+          urlWrapLabel.textContent = `Adresse — ${defs.video.label}`;
           urlField.placeholder = "https://youtube.com/... ou lien .mp4";
         } else {
-          urlWrapLabel.textContent = "Adresse du site";
+          urlWrapLabel.textContent = `Adresse — ${defs.site.label}`;
           urlField.placeholder = "https://exemple.com";
         }
       }
@@ -2405,16 +2461,19 @@
         textArea.style.display = "none";
         videoTabArea.style.display = "none";
         siteArea.style.display = "block";
+        editContentBtn.style.display = "none";
         renderViewer(st);
       } else if (st.type === "video") {
         textArea.style.display = "none";
         siteArea.style.display = "none";
         videoTabArea.style.display = "block";
+        editContentBtn.style.display = "none";
         renderVideoTab(st);
       } else {
         siteArea.style.display = "none";
         videoTabArea.style.display = "none";
         textArea.style.display = "block";
+        editContentBtn.style.display = unlocked ? "inline-flex" : "none";
         if (document.activeElement === sheet) {
           /* en cours de frappe : ne pas réécrire le contenu, ça ferait sauter le curseur au début */
           sheet.contentEditable = unlocked ? "true" : "false";
@@ -2431,6 +2490,9 @@
     }
 
     function renderVideoTab(st) {
+      const defs = getTypeDefs();
+      const barLabel = document.getElementById("videoTabBarLabel");
+      if (barLabel) barLabel.textContent = `${defs.video.emoji} ${defs.video.label}`;
       const url = st.url || "";
       if (url) {
         const embed = toVideoEmbed(url);
@@ -2469,6 +2531,9 @@
     }
 
     function renderViewer(st) {
+      const defs = getTypeDefs();
+      const barLabel = document.getElementById("viewerBarLabel");
+      if (barLabel) barLabel.textContent = `${defs.site.emoji} ${defs.site.label}`;
       const url = st.url || "";
       if (url) {
         viewerFrame.src = url;
@@ -3105,6 +3170,20 @@
       google55bbd5b30df839a5.html<br>+ balise meta google-site-verification active
     </p>
     ${unlocked ? `
+    <label>Types de contenu</label>
+    <div class="typedef-row">
+      <input type="text" class="typedef-emoji" id="tdEmoji-text" maxlength="4" value="${getTypeDefs().text.emoji}">
+      <input type="text" class="typedef-label" id="tdLabel-text" value="${escapeHtml(getTypeDefs().text.label)}" placeholder="Nom du type">
+    </div>
+    <div class="typedef-row">
+      <input type="text" class="typedef-emoji" id="tdEmoji-site" maxlength="4" value="${getTypeDefs().site.emoji}">
+      <input type="text" class="typedef-label" id="tdLabel-site" value="${escapeHtml(getTypeDefs().site.label)}" placeholder="Nom du type">
+    </div>
+    <div class="typedef-row">
+      <input type="text" class="typedef-emoji" id="tdEmoji-video" maxlength="4" value="${getTypeDefs().video.emoji}">
+      <input type="text" class="typedef-label" id="tdLabel-video" value="${escapeHtml(getTypeDefs().video.label)}" placeholder="Nom du type">
+    </div>
+    <button class="cancel" id="saveTypeDefsBtn">Enregistrer les types</button>
     <label>Logo</label>
     <p style="background:var(--surface-2); padding:12px 14px; border-radius:12px; font-size:13px; line-height:1.6;">
       Double-clique sur le logo en haut à gauche pour en mettre un nouveau.
@@ -3114,6 +3193,25 @@
     <button class="cancel" id="settingsClose">Fermer</button>
   `;
       document.getElementById("settingsClose").addEventListener("click", () => overlay.classList.remove("show"));
+      const saveTypeDefsBtn = document.getElementById("saveTypeDefsBtn");
+      if (saveTypeDefsBtn) {
+        saveTypeDefsBtn.addEventListener("click", () => {
+          const next = { text: {}, site: {}, video: {} };
+          ["text", "site", "video"].forEach(k => {
+            const emoji = document.getElementById(`tdEmoji-${k}`).value.trim();
+            const label = document.getElementById(`tdLabel-${k}`).value.trim();
+            next[k].emoji = emoji || DEFAULT_TYPE_DEFS[k].emoji;
+            next[k].label = label || DEFAULT_TYPE_DEFS[k].label;
+          });
+          state.meta.typeDefs = next;
+          renderMeta();
+          if (view === "sub") renderSub();
+          else if (view === "content") renderContent();
+          queueSave();
+          overlay.classList.remove("show");
+          showToast("Types mis à jour");
+        });
+      }
       const resetLogoBtn = document.getElementById("resetLogoBtn");
       if (resetLogoBtn) {
         resetLogoBtn.addEventListener("click", () => {
@@ -3128,11 +3226,31 @@
 
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.classList.remove("show"); });
 
-    /* ouvrir automatiquement le ruban en édition */
-    document.getElementById("screenContent").addEventListener("click", (e) => {
-      if (unlocked && textArea.style.display !== "none" && !ribbon.classList.contains("open")) {
-        ribbon.classList.add("open");
-      }
+    /* ouvrir le ruban d'édition après une sélection de texte (attend 1s que la sélection
+       se stabilise, puis remonte en haut de l'écran pour laisser modifier tranquillement) */
+    let selectionOpenTimer = null;
+    document.addEventListener("selectionchange", () => {
+      if (!unlocked || view !== "content" || textArea.style.display === "none") return;
+      clearTimeout(selectionOpenTimer);
+      selectionOpenTimer = setTimeout(() => {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+        if (!sheet.contains(sel.anchorNode)) return;
+        if (!ribbon.classList.contains("open")) {
+          ribbon.classList.add("open");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }, 1000);
+    });
+    document.getElementById("doneEditingBtn").addEventListener("click", () => {
+      ribbon.classList.remove("open");
+      window.getSelection()?.removeAllRanges();
+    });
+    editContentBtn.addEventListener("click", () => {
+      if (!unlocked) return;
+      ribbon.classList.add("open");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      sheet.focus();
     });
 
     /* ===================== sauvegarde / synchro Firebase ===================== */
@@ -3195,7 +3313,7 @@
         return;
       }
       state = {
-        meta: data.meta || { title: "Cours 109", matiere: "", prof: "", logo: "" },
+        meta: data.meta || { title: "Cours 109", matiere: "", prof: "", logo: "", typeDefs: {} },
         mainTabs: data.mainTabs || [],
         subTabs: data.subTabs || {},
         contents: data.contents || {}
