@@ -1060,6 +1060,23 @@
       max-width: 100%;
     }
 
+    .video-frame-wrap {
+      width: 100%;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      background: #000;
+    }
+
+    .video-frame-wrap iframe,
+    .video-frame-wrap video {
+      width: 100%;
+      aspect-ratio: 16/9;
+      border: none;
+      background: #000;
+      max-height: calc(100dvh - 260px);
+    }
+
     .viewer-empty {
       flex: 1;
       display: flex;
@@ -1704,10 +1721,25 @@
             <div class="viewer-empty" id="viewerEmpty">Aucun site défini pour cet onglet.</div>
           </div>
         </div>
+
+        <div id="videoTabArea" style="display:none;">
+          <div class="viewer-wrap">
+            <div class="viewer-bar">
+              <span>🎬 Vidéo</span>
+            </div>
+            <div class="viewer-editbar" id="videoTabEditbar">
+              <input type="url" id="videoTabUrlInput" placeholder="https://youtube.com/... ou lien .mp4">
+              <button id="videoTabUrlSave">Enregistrer</button>
+            </div>
+            <div class="video-frame-wrap" id="videoTabFrameWrap" style="display:none;"></div>
+            <div class="viewer-empty" id="videoTabEmpty">Aucune vidéo définie pour cet onglet.</div>
+          </div>
+        </div>
       </section>
 
     </div>
   </div>
+
 
   <input type="file" id="logoInput" accept="image/*" style="display:none">
   <input type="file" id="imageInput" accept="image/*" style="display:none">
@@ -1946,6 +1978,11 @@
     const viewerOpenLink = document.getElementById("viewerOpenLink");
     const viewerEditbar = document.getElementById("viewerEditbar");
     const viewerUrlInput = document.getElementById("viewerUrlInput");
+    const videoTabArea = document.getElementById("videoTabArea");
+    const videoTabFrameWrap = document.getElementById("videoTabFrameWrap");
+    const videoTabEmpty = document.getElementById("videoTabEmpty");
+    const videoTabEditbar = document.getElementById("videoTabEditbar");
+    const videoTabUrlInput = document.getElementById("videoTabUrlInput");
 
     /* ===================== thème clair / sombre / auto ===================== */
     const THEME_KEY = "c109_theme";
@@ -2023,18 +2060,21 @@
       view = name;
     }
     function goHome(push) {
+      stopAllMedia();
       currentMainId = null; currentSubId = null;
       renderHome();
       showScreen("home", "back");
       if (push !== false) history.pushState({ view: "home" }, "");
     }
     function openMain(mainId, push) {
+      stopAllMedia();
       currentMainId = mainId; currentSubId = null;
       renderSub();
       showScreen("sub", "fwd");
       if (push !== false) history.pushState({ view: "sub", mainId }, "");
     }
     function openSub(mainId, subId, push) {
+      stopAllMedia();
       currentMainId = mainId; currentSubId = subId;
       renderContent();
       showScreen("content", "fwd");
@@ -2218,10 +2258,10 @@
         el.style.setProperty("--tint", tint(st.color));
         el.style.setProperty("--bar", st.color);
         el.innerHTML = `
-      <span class="typeicon" style="background:${st.color}; color:#fff;">${st.type === "site" ? "🌐" : "📝"}</span>
+      <span class="typeicon" style="background:${st.color}; color:#fff;">${st.type === "site" ? "🌐" : st.type === "video" ? "🎬" : "📝"}</span>
       <div class="rowtext">
         <div class="rowtitle" spellcheck="false">${escapeHtml(st.title)}</div>
-        <div class="rowmeta">${st.type === "site" ? "Site" : "Texte"}</div>
+        <div class="rowmeta">${st.type === "site" ? "Site" : st.type === "video" ? "Vidéo" : "Texte"}</div>
       </div>
       ${unlocked ? `<div class="rowbtns">${idx > 0 ? '<button class="rowbtn up" title="Monter">↑</button>' : ""}${idx < items.length - 1 ? '<button class="rowbtn down" title="Descendre">↓</button>' : ""}<button class="rowbtn edit" title="Modifier">✎</button><button class="rowbtn del" title="Supprimer">✕</button></div>` : ""}
       <span class="chev">›</span>`;
@@ -2299,9 +2339,10 @@
     <div class="typechoice">
       <button type="button" id="pickText">📝 Texte</button>
       <button type="button" id="pickSite">🌐 Site</button>
+      <button type="button" id="pickVideo">🎬 Vidéo</button>
     </div>
     <div id="urlWrap" style="display:none;">
-      <label>Adresse du site</label>
+      <label id="urlWrapLabel">Adresse du site</label>
       <input type="url" id="subUrlField" placeholder="https://exemple.com">
     </div>
     <button class="fullbtn" id="subSave">${existing ? "Enregistrer" : "Créer"}</button>
@@ -2310,28 +2351,40 @@
       const titleField = document.getElementById("subTitleField");
       const urlField = document.getElementById("subUrlField");
       const urlWrap = document.getElementById("urlWrap");
+      const urlWrapLabel = document.getElementById("urlWrapLabel");
       const btnText = document.getElementById("pickText");
       const btnSite = document.getElementById("pickSite");
+      const btnVideo = document.getElementById("pickVideo");
       titleField.value = existing ? existing.title : "";
       urlField.value = existing && existing.url ? existing.url : "";
       function refreshType() {
         btnText.classList.toggle("picked", type === "text");
         btnSite.classList.toggle("picked", type === "site");
-        urlWrap.style.display = type === "site" ? "block" : "none";
+        btnVideo.classList.toggle("picked", type === "video");
+        urlWrap.style.display = (type === "site" || type === "video") ? "block" : "none";
+        if (type === "video") {
+          urlWrapLabel.textContent = "Adresse de la vidéo";
+          urlField.placeholder = "https://youtube.com/... ou lien .mp4";
+        } else {
+          urlWrapLabel.textContent = "Adresse du site";
+          urlField.placeholder = "https://exemple.com";
+        }
       }
       refreshType();
       btnText.addEventListener("click", () => { type = "text"; refreshType(); });
       btnSite.addEventListener("click", () => { type = "site"; refreshType(); });
+      btnVideo.addEventListener("click", () => { type = "video"; refreshType(); });
       titleField.focus();
       document.getElementById("subSave").addEventListener("click", () => {
         const title = titleField.value.trim() || "Sans titre";
         const url = urlField.value.trim();
+        const hasUrl = type === "site" || type === "video";
         if (existing) {
           existing.title = title;
           existing.type = type;
-          existing.url = type === "site" ? url : "";
+          existing.url = hasUrl ? url : "";
         } else {
-          const st = { id: uid(), title, type, url: type === "site" ? url : "", color: randomTabColor() };
+          const st = { id: uid(), title, type, url: hasUrl ? url : "", color: randomTabColor() };
           if (!state.subTabs[currentMainId]) state.subTabs[currentMainId] = [];
           state.subTabs[currentMainId].push(st);
           if (type === "text") state.contents[st.id] = "";
@@ -2350,10 +2403,17 @@
       contentScreenTitle.textContent = st.title;
       if (st.type === "site") {
         textArea.style.display = "none";
+        videoTabArea.style.display = "none";
         siteArea.style.display = "block";
         renderViewer(st);
+      } else if (st.type === "video") {
+        textArea.style.display = "none";
+        siteArea.style.display = "none";
+        videoTabArea.style.display = "block";
+        renderVideoTab(st);
       } else {
         siteArea.style.display = "none";
+        videoTabArea.style.display = "none";
         textArea.style.display = "block";
         if (document.activeElement === sheet) {
           /* en cours de frappe : ne pas réécrire le contenu, ça ferait sauter le curseur au début */
@@ -2368,6 +2428,44 @@
         }
         if (!unlocked) ribbon.classList.remove("open");
       }
+    }
+
+    function renderVideoTab(st) {
+      const url = st.url || "";
+      if (url) {
+        const embed = toVideoEmbed(url);
+        videoTabFrameWrap.innerHTML = embed.kind === "iframe"
+          ? `<iframe src="${escapeHtml(embed.src)}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>`
+          : `<video src="${escapeHtml(embed.src)}" controls preload="metadata" playsinline></video>`;
+        videoTabFrameWrap.style.display = "flex";
+        videoTabEmpty.style.display = "none";
+      } else {
+        videoTabFrameWrap.style.display = "none";
+        videoTabFrameWrap.innerHTML = "";
+        videoTabEmpty.style.display = "flex";
+        videoTabEmpty.textContent = unlocked ? "Aucune vidéo définie — ajoute un lien ci-dessus." : "Aucune vidéo définie pour cet onglet.";
+      }
+      videoTabEditbar.classList.toggle("show", unlocked);
+      videoTabUrlInput.value = url;
+    }
+    document.getElementById("videoTabUrlSave").addEventListener("click", () => {
+      const st = (state.subTabs[currentMainId] || []).find(x => x.id === currentSubId);
+      if (!st || !unlocked) return;
+      st.url = videoTabUrlInput.value.trim();
+      renderVideoTab(st);
+      queueSave();
+      showToast("Lien mis à jour");
+    });
+
+    /* ===================== coupe toute lecture audio/vidéo en quittant l'écran ===================== */
+    function stopAllMedia() {
+      document.querySelectorAll("#sheet video, #videoTabFrameWrap video").forEach(v => {
+        try { v.pause(); v.currentTime = 0; } catch (e) { }
+      });
+      document.querySelectorAll("#sheet iframe, #videoTabFrameWrap iframe").forEach(f => {
+        try { const src = f.src; f.src = "about:blank"; f.src = src; } catch (e) { }
+      });
+      try { viewerFrame.src = "about:blank"; } catch (e) { }
     }
 
     function renderViewer(st) {
