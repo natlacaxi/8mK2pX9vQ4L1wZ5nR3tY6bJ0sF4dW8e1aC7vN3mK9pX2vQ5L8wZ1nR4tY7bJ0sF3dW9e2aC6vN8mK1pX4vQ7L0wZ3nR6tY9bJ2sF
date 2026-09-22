@@ -2015,6 +2015,39 @@
     sheet.addEventListener("mouseup", saveSelection);
     sheet.addEventListener("keyup", saveSelection);
     sheet.addEventListener("focus", saveSelection);
+    try { document.execCommand("styleWithCSS", false, true); } catch (e) { }
+
+    /* ===================== contraste automatique (évite le texte invisible en changeant de thème) ===================== */
+    function relLuminance(colorStr) {
+      if (!colorStr) return null;
+      const m = colorStr.match(/[\d.]+/g);
+      if (!m) return null;
+      const [r, g, b] = m.slice(0, 3).map(Number).map(c => {
+        c /= 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+    function contrastRatio(l1, l2) {
+      const a = Math.max(l1, l2) + 0.05, b = Math.min(l1, l2) + 0.05;
+      return a / b;
+    }
+    function fixContrast() {
+      if (!sheet || textArea.style.display === "none") return;
+      const sheetBgLum = relLuminance(getComputedStyle(sheet).backgroundColor);
+      if (sheetBgLum === null) return;
+      sheet.querySelectorAll("[style*='color']").forEach(el => {
+        const inline = el.style.color;
+        if (!inline) return;
+        if (!el.dataset.origColor) el.dataset.origColor = inline;
+        const origLum = relLuminance(el.dataset.origColor);
+        if (origLum === null) return;
+        const hlBg = el.style.backgroundColor;
+        const bgLum = hlBg ? (relLuminance(hlBg) ?? sheetBgLum) : sheetBgLum;
+        const ratio = contrastRatio(origLum, bgLum);
+        el.style.color = ratio < 1.8 ? (bgLum < 0.5 ? "#F5F5F7" : "#14151C") : el.dataset.origColor;
+      });
+    }
     const statusDot = document.getElementById("statusDot");
     const ribbon = document.getElementById("ribbon");
     const overlay = document.getElementById("overlay");
@@ -2045,6 +2078,7 @@
       const dark = pref === "dark" || (pref === "auto" && mq.matches);
       document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
       document.getElementById("toggleTheme").textContent = pref === "auto" ? "🌓" : (dark ? "🌙" : "☀️");
+      fixContrast();
     }
     document.getElementById("toggleTheme").addEventListener("click", () => {
       const order = ["auto", "light", "dark"];
@@ -2483,6 +2517,7 @@
             sheet.innerHTML = state.contents[st.id] || "";
             sheet.contentEditable = unlocked ? "true" : "false";
             sheet.classList.remove("fade");
+            fixContrast();
           }, 120);
         }
         if (!unlocked) ribbon.classList.remove("open");
@@ -2606,20 +2641,24 @@
     }
     buildSwatches(document.getElementById("textColors"), PALETTE_TEXT, (c) => {
       restoreSelection(); document.execCommand("foreColor", false, c);
+      fixContrast();
       state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
     buildSwatches(document.getElementById("bgColors"), PALETTE_BG, (c) => {
       restoreSelection(); document.execCommand("hiliteColor", false, c);
+      fixContrast();
       state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
     document.getElementById("textColorCustom").addEventListener("mousedown", (e) => e.preventDefault());
     document.getElementById("textColorCustom").addEventListener("input", (e) => {
       restoreSelection(); document.execCommand("foreColor", false, e.target.value);
+      fixContrast();
       state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
     document.getElementById("bgColorCustom").addEventListener("mousedown", (e) => e.preventDefault());
     document.getElementById("bgColorCustom").addEventListener("input", (e) => {
       restoreSelection(); document.execCommand("hiliteColor", false, e.target.value);
+      fixContrast();
       state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
     document.querySelectorAll(".fmtbtn[data-cmd]").forEach(btn => {
