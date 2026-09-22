@@ -717,6 +717,31 @@
       transform: scale(.94);
     }
 
+    .fontsize-ctrl {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface-2);
+      border-radius: 10px;
+      padding: 0 4px;
+    }
+
+    .fontsize-ctrl .sizebtn {
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .fontsize-ctrl .sizebtn:hover {
+      background: var(--line);
+    }
+
+    #fontSizeLabel {
+      font-size: 12px;
+      color: var(--ink-soft);
+      min-width: 62px;
+      text-align: center;
+    }
+
     .swatch {
       width: 24px;
       height: 24px;
@@ -849,6 +874,66 @@
     .sheet .linkcase::before {
       content: "🔗";
       flex-shrink: 0;
+    }
+
+    .sheet .mediabox {
+      display: block;
+      margin: 16px 0;
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--surface-2);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--line);
+    }
+
+    .sheet .mediabox .media-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      font-weight: 700;
+      font-size: 14.5px;
+      background: var(--accent-gradient);
+      color: #fff;
+    }
+
+    .sheet[contenteditable="true"] .mediabox .media-title {
+      cursor: pointer;
+    }
+
+    .sheet .mediabox .media-title::before {
+      content: "🎬";
+      flex-shrink: 0;
+    }
+
+    .sheet .mediabox.img-box .media-title::before {
+      content: "🖼";
+    }
+
+    .sheet .mediabox .media-frame {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+    }
+
+    .sheet .mediabox .media-frame iframe,
+    .sheet .mediabox .media-frame video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    .sheet .mediabox.img-box img {
+      width: 100%;
+      max-width: 100%;
+      display: block;
+      margin: 0;
+      border-radius: 0;
+      cursor: zoom-in;
     }
 
     #lightbox {
@@ -1333,14 +1418,30 @@
       }
     }
 
-    /* ---------- confort grand écran ---------- */
-    @media (min-width: 900px) {
+    /* ---------- tablette : utilise mieux l'espace intermédiaire ---------- */
+    @media (min-width: 641px) and (max-width: 899px) {
       body {
-        padding: 32px 20px;
+        padding: 18px 12px;
       }
 
       #app {
-        max-width: 840px;
+        max-width: min(94vw, 760px);
+        min-height: calc(100vh - 36px);
+        background: var(--surface);
+        border-radius: 22px;
+        box-shadow: var(--shadow-lift);
+        overflow: hidden;
+      }
+    }
+
+    /* ---------- confort grand écran : largeur fluide selon l'écran ---------- */
+    @media (min-width: 900px) {
+      body {
+        padding: clamp(20px, 3vw, 48px) 20px;
+      }
+
+      #app {
+        max-width: clamp(780px, 56vw, 1240px);
         min-height: calc(100vh - 64px);
         background: var(--surface);
         border-radius: 26px;
@@ -1375,6 +1476,22 @@
 
       .viewer-frame {
         min-height: calc(100dvh - 280px);
+      }
+    }
+
+    /* ---------- très grands écrans : encore un peu plus d'air ---------- */
+    @media (min-width: 1600px) {
+      #app {
+        max-width: clamp(1100px, 46vw, 1400px);
+      }
+
+      .sheet {
+        font-size: 18px;
+        padding: 44px 52px;
+      }
+
+      .brand {
+        font-size: 26px;
       }
     }
 
@@ -1488,14 +1605,11 @@
                     <option value="'Fraunces',serif">Fraunces</option>
                     <option value="Georgia,serif">Georgia</option>
                   </select>
-                  <select id="fontSize">
-                    <option value="2">Petit</option>
-                    <option value="3" selected>Normal</option>
-                    <option value="4">Moyen</option>
-                    <option value="5">Grand</option>
-                    <option value="6">Très grand</option>
-                    <option value="7">Titre</option>
-                  </select>
+                  <div class="fontsize-ctrl">
+                    <button class="fmtbtn sizebtn" id="fontSizeDown" title="Réduire la taille">A−</button>
+                    <span id="fontSizeLabel">Normal</span>
+                    <button class="fmtbtn sizebtn" id="fontSizeUp" title="Augmenter la taille">A+</button>
+                  </div>
                 </div>
               </div>
               <div class="rgroup">
@@ -1540,6 +1654,7 @@
                   <button class="fmtbtn" id="insertImage">🖼 Image</button>
                   <button class="fmtbtn" id="insertLinkBox">🔗 Lien</button>
                   <button class="fmtbtn" id="insertImageLink">🖼🔗 Image (lien)</button>
+                  <button class="fmtbtn" id="insertVideo">🎬 Vidéo</button>
                 </div>
               </div>
               <div class="rgroup">
@@ -1777,6 +1892,24 @@
     const textArea = document.getElementById("textArea");
     const siteArea = document.getElementById("siteArea");
     const sheet = document.getElementById("sheet");
+    let savedRange = null;
+    function saveSelection() {
+      const sel = window.getSelection();
+      if (sel.rangeCount && sheet.contains(sel.anchorNode)) {
+        savedRange = sel.getRangeAt(0).cloneRange();
+      }
+    }
+    function restoreSelection() {
+      sheet.focus();
+      if (savedRange) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      }
+    }
+    sheet.addEventListener("mouseup", saveSelection);
+    sheet.addEventListener("keyup", saveSelection);
+    sheet.addEventListener("focus", saveSelection);
     const statusDot = document.getElementById("statusDot");
     const ribbon = document.getElementById("ribbon");
     const overlay = document.getElementById("overlay");
@@ -2283,46 +2416,73 @@
       colors.forEach(c => {
         const s = document.createElement("button");
         s.className = "swatch"; s.style.background = c; s.title = c;
+        s.addEventListener("mousedown", (e) => e.preventDefault());
         s.addEventListener("click", () => onPick(c));
         container.appendChild(s);
       });
     }
     buildSwatches(document.getElementById("textColors"), PALETTE_TEXT, (c) => {
-      sheet.focus(); document.execCommand("foreColor", false, c);
+      restoreSelection(); document.execCommand("foreColor", false, c);
+      state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
     buildSwatches(document.getElementById("bgColors"), PALETTE_BG, (c) => {
-      sheet.focus(); document.execCommand("hiliteColor", false, c);
+      restoreSelection(); document.execCommand("hiliteColor", false, c);
+      state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
+    document.getElementById("textColorCustom").addEventListener("mousedown", (e) => e.preventDefault());
     document.getElementById("textColorCustom").addEventListener("input", (e) => {
-      sheet.focus(); document.execCommand("foreColor", false, e.target.value);
+      restoreSelection(); document.execCommand("foreColor", false, e.target.value);
+      state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
+    document.getElementById("bgColorCustom").addEventListener("mousedown", (e) => e.preventDefault());
     document.getElementById("bgColorCustom").addEventListener("input", (e) => {
-      sheet.focus(); document.execCommand("hiliteColor", false, e.target.value);
+      restoreSelection(); document.execCommand("hiliteColor", false, e.target.value);
+      state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
     document.querySelectorAll(".fmtbtn[data-cmd]").forEach(btn => {
+      btn.addEventListener("mousedown", (e) => e.preventDefault());
       btn.addEventListener("click", () => {
         if (!unlocked) return;
-        sheet.focus();
+        restoreSelection();
         document.execCommand(btn.dataset.cmd, false, null);
+        state.contents[currentSubId] = sheet.innerHTML;
+        queueSave();
       });
     });
-    document.getElementById("fontSize").addEventListener("change", (e) => {
+    const fontSizeLabels = { 1: "Minuscule", 2: "Petit", 3: "Normal", 4: "Moyen", 5: "Grand", 6: "Très grand", 7: "Titre" };
+    let fontSizeStep = 3;
+    function applyFontSize(step) {
       if (!unlocked) return;
-      sheet.focus(); document.execCommand("fontSize", false, e.target.value);
-    });
+      fontSizeStep = Math.max(1, Math.min(7, step));
+      document.getElementById("fontSizeLabel").textContent = fontSizeLabels[fontSizeStep];
+      restoreSelection();
+      document.execCommand("fontSize", false, String(fontSizeStep));
+      state.contents[currentSubId] = sheet.innerHTML;
+      queueSave();
+    }
+    document.getElementById("fontSizeDown").addEventListener("mousedown", (e) => e.preventDefault());
+    document.getElementById("fontSizeDown").addEventListener("click", () => applyFontSize(fontSizeStep - 1));
+    document.getElementById("fontSizeUp").addEventListener("mousedown", (e) => e.preventDefault());
+    document.getElementById("fontSizeUp").addEventListener("click", () => applyFontSize(fontSizeStep + 1));
+    document.getElementById("fontFamily").addEventListener("mousedown", saveSelection);
     document.getElementById("fontFamily").addEventListener("change", (e) => {
       if (!unlocked) return;
-      sheet.focus(); document.execCommand("fontName", false, e.target.value);
+      restoreSelection(); document.execCommand("fontName", false, e.target.value);
+      state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
+    document.getElementById("insertCase").addEventListener("mousedown", (e) => e.preventDefault());
     document.getElementById("insertCase").addEventListener("click", () => {
       if (!unlocked) return;
-      sheet.focus();
+      restoreSelection();
       document.execCommand("insertHTML", false,
         `<div class="case">Nouvelle case — écris ici…</div><p><br></p>`);
+      state.contents[currentSubId] = sheet.innerHTML;
+      queueSave();
     });
+    document.getElementById("insertTable").addEventListener("mousedown", (e) => e.preventDefault());
     document.getElementById("insertTable").addEventListener("click", () => {
       if (!unlocked) return;
-      sheet.focus();
+      restoreSelection();
       const rows = 3, cols = 3;
       let html = "<table>";
       for (let r = 0; r < rows; r++) {
@@ -2334,10 +2494,12 @@
       }
       html += "</table><p><br></p>";
       document.execCommand("insertHTML", false, html);
+      state.contents[currentSubId] = sheet.innerHTML;
       queueSave();
     });
     document.getElementById("insertImage").addEventListener("click", () => {
       if (!unlocked) return;
+      saveSelection();
       imageInput.click();
     });
     imageInput.addEventListener("change", () => {
@@ -2345,8 +2507,9 @@
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        sheet.focus();
+        restoreSelection();
         document.execCommand("insertHTML", false, `<img src="${reader.result}" alt="">`);
+        state.contents[currentSubId] = sheet.innerHTML;
         queueSave();
       };
       reader.readAsDataURL(file);
@@ -2354,7 +2517,7 @@
     });
     document.getElementById("exportPdf").addEventListener("click", () => window.print());
 
-    /* ===================== cases-liens & images par lien ===================== */
+    /* ===================== cases-liens, images & vidéos par lien ===================== */
     function driveDirectLink(url) {
       const m = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
       if (m) return `https://drive.google.com/uc?export=view&id=${m[1]}`;
@@ -2363,35 +2526,144 @@
       return url;
     }
 
+    function toVideoEmbed(url) {
+      let m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{6,})/);
+      if (m) return { kind: "iframe", src: `https://www.youtube.com/embed/${m[1]}` };
+      m = url.match(/vimeo\.com\/(\d+)/);
+      if (m) return { kind: "iframe", src: `https://player.vimeo.com/video/${m[1]}` };
+      m = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+      if (m) return { kind: "iframe", src: `https://drive.google.com/file/d/${m[1]}/preview` };
+      return { kind: "video", src: url };
+    }
+
     document.getElementById("insertLinkBox").addEventListener("click", () => {
       if (!unlocked) return;
+      saveSelection();
       openLinkBoxEditor(null);
     });
 
     document.getElementById("insertImageLink").addEventListener("click", () => {
       if (!unlocked) return;
+      saveSelection();
+      openImageLinkEditor(null);
+    });
+
+    document.getElementById("insertVideo").addEventListener("click", () => {
+      if (!unlocked) return;
+      saveSelection();
+      openVideoEditor(null);
+    });
+
+    function openImageLinkEditor(existingEl) {
       overlay.classList.add("show");
       modal.className = "modal wide";
       modal.innerHTML = `
-    <h2>Image par lien</h2>
+    <h2>${existingEl ? "Modifier l'image" : "Image par lien"}</h2>
+    <label>Titre (optionnel)</label>
+    <input type="text" id="imgLinkTitle" placeholder="Ex. Schéma du chapitre">
     <label>Lien de l'image (Drive, Cloudinary, Mega…)</label>
     <input type="url" id="imgLinkField" placeholder="https://...">
-    <button class="fullbtn" id="imgLinkSave">Insérer</button>
+    <button class="fullbtn" id="imgLinkSave">${existingEl ? "Enregistrer" : "Insérer"}</button>
+    ${existingEl ? `<button class="cancel" id="imgLinkDelete" style="color:var(--danger);">Supprimer</button>` : ""}
     <button class="cancel" id="imgLinkCancel">Annuler</button>
   `;
-      const field = document.getElementById("imgLinkField");
-      field.focus();
+      const titleField = document.getElementById("imgLinkTitle");
+      const urlField = document.getElementById("imgLinkField");
+      if (existingEl) {
+        titleField.value = existingEl.querySelector(".media-title")?.textContent || "";
+        urlField.value = existingEl.dataset.src || existingEl.querySelector("img")?.src || "";
+      }
+      urlField.focus();
       document.getElementById("imgLinkSave").addEventListener("click", () => {
-        const url = field.value.trim();
+        const url = urlField.value.trim();
         if (!url) return;
+        const title = titleField.value.trim();
         overlay.classList.remove("show");
-        sheet.focus();
-        document.execCommand("insertHTML", false, `<img src="${driveDirectLink(url)}" alt="">`);
+        const direct = driveDirectLink(url);
+        if (existingEl) {
+          existingEl.dataset.src = url;
+          existingEl.querySelector("img").src = direct;
+          let titleEl = existingEl.querySelector(".media-title");
+          if (title) {
+            if (!titleEl) {
+              titleEl = document.createElement("div");
+              titleEl.className = "media-title";
+              existingEl.insertBefore(titleEl, existingEl.firstChild);
+            }
+            titleEl.textContent = title;
+          } else if (titleEl) {
+            titleEl.remove();
+          }
+        } else {
+          restoreSelection();
+          const html = `<figure class="mediabox img-box" contenteditable="false" data-src="${escapeHtml(url)}">${title ? `<div class="media-title">${escapeHtml(title)}</div>` : ""}<img src="${direct}" alt="${escapeHtml(title)}"></figure><p><br></p>`;
+          document.execCommand("insertHTML", false, html);
+        }
         state.contents[currentSubId] = sheet.innerHTML;
         queueSave();
       });
+      if (existingEl) {
+        document.getElementById("imgLinkDelete").addEventListener("click", () => {
+          overlay.classList.remove("show");
+          existingEl.remove();
+          state.contents[currentSubId] = sheet.innerHTML;
+          queueSave();
+        });
+      }
       document.getElementById("imgLinkCancel").addEventListener("click", () => overlay.classList.remove("show"));
-    });
+    }
+
+    function openVideoEditor(existingEl) {
+      overlay.classList.add("show");
+      modal.className = "modal wide";
+      modal.innerHTML = `
+    <h2>${existingEl ? "Modifier la vidéo" : "Nouvelle vidéo"}</h2>
+    <label>Titre</label>
+    <input type="text" id="vidTitle" placeholder="Ex. Correction de l'exercice 3">
+    <label>Lien de la vidéo (YouTube, Vimeo, Drive, ou lien direct .mp4)</label>
+    <input type="url" id="vidUrl" placeholder="https://...">
+    <button class="fullbtn" id="vidSave">${existingEl ? "Enregistrer" : "Insérer"}</button>
+    ${existingEl ? `<button class="cancel" id="vidDelete" style="color:var(--danger);">Supprimer</button>` : ""}
+    <button class="cancel" id="vidCancel">Annuler</button>
+  `;
+      const titleField = document.getElementById("vidTitle");
+      const urlField = document.getElementById("vidUrl");
+      if (existingEl) {
+        titleField.value = existingEl.querySelector(".media-title")?.textContent || "";
+        urlField.value = existingEl.dataset.src || "";
+      }
+      titleField.focus();
+      document.getElementById("vidSave").addEventListener("click", () => {
+        const url = urlField.value.trim();
+        if (!url) return;
+        const title = titleField.value.trim() || "Vidéo";
+        overlay.classList.remove("show");
+        const embed = toVideoEmbed(url);
+        const frameHtml = embed.kind === "iframe"
+          ? `<iframe src="${escapeHtml(embed.src)}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>`
+          : `<video src="${escapeHtml(embed.src)}" controls preload="metadata" playsinline></video>`;
+        if (existingEl) {
+          existingEl.dataset.src = url;
+          existingEl.querySelector(".media-title").textContent = title;
+          existingEl.querySelector(".media-frame").innerHTML = frameHtml;
+        } else {
+          restoreSelection();
+          const html = `<div class="mediabox" contenteditable="false" data-src="${escapeHtml(url)}"><div class="media-title">${escapeHtml(title)}</div><div class="media-frame">${frameHtml}</div></div><p><br></p>`;
+          document.execCommand("insertHTML", false, html);
+        }
+        state.contents[currentSubId] = sheet.innerHTML;
+        queueSave();
+      });
+      if (existingEl) {
+        document.getElementById("vidDelete").addEventListener("click", () => {
+          overlay.classList.remove("show");
+          existingEl.remove();
+          state.contents[currentSubId] = sheet.innerHTML;
+          queueSave();
+        });
+      }
+      document.getElementById("vidCancel").addEventListener("click", () => overlay.classList.remove("show"));
+    }
 
     function openLinkBoxEditor(existingEl) {
       overlay.classList.add("show");
@@ -2444,6 +2716,14 @@
         e.preventDefault();
         if (unlocked) openLinkBoxEditor(linkEl);
         else window.open(linkEl.getAttribute("href"), "_blank", "noopener");
+        return;
+      }
+      const titleEl = e.target.closest(".mediabox .media-title");
+      if (titleEl && unlocked) {
+        e.preventDefault();
+        const box = titleEl.closest(".mediabox");
+        if (box.classList.contains("img-box")) openImageLinkEditor(box);
+        else openVideoEditor(box);
         return;
       }
       if (e.target.tagName === "IMG") {
