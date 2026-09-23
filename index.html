@@ -1097,6 +1097,45 @@
       max-height: calc(100dvh - 260px);
     }
 
+    #fileTabPreviewWrap iframe {
+      width: 100%;
+      flex: 1;
+      min-height: calc(100dvh - 260px);
+      border: none;
+      background: #fff;
+    }
+
+    .filecard {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 50px 20px;
+      text-align: center;
+    }
+
+    .filecard .fc-icon {
+      font-size: 46px;
+    }
+
+    .filecard .fc-name {
+      font-weight: 600;
+      font-size: 15px;
+      word-break: break-word;
+    }
+
+    .filecard .fc-dl {
+      margin-top: 6px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      font-size: 13.5px;
+      text-decoration: none;
+    }
+
     .viewer-empty {
       flex: 1;
       display: flex;
@@ -1246,6 +1285,32 @@
 
     .typedef-row .typedef-label {
       flex: 1;
+    }
+
+    .movelist {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 50vh;
+      overflow-y: auto;
+      margin-top: 6px;
+    }
+
+    .movedest {
+      text-align: left;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: none;
+      background: var(--surface-2);
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Inter';
+    }
+
+    .movedest:hover {
+      background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
     }
 
     .colorpick {
@@ -1681,7 +1746,12 @@
               <div class="rgroup">
                 <span class="rgroup-label">Police</span>
                 <div class="rrow">
-                  <select id="fontFamily">
+                  <div class="fontsize-ctrl">
+                    <button class="fmtbtn sizebtn" id="fontFamilyDown" title="Police précédente">◂ Police</button>
+                    <span id="fontFamilyLabel">Inter</span>
+                    <button class="fmtbtn sizebtn" id="fontFamilyUp" title="Police suivante">Police ▸</button>
+                  </div>
+                  <select id="fontFamily" style="display:none;">
                     <option value="'Inter',sans-serif">Inter</option>
                     <option value="'Fraunces',serif">Fraunces</option>
                     <option value="Georgia,serif">Georgia</option>
@@ -1779,6 +1849,22 @@
             <div class="viewer-empty" id="videoTabEmpty">Aucune vidéo définie pour cet onglet.</div>
           </div>
         </div>
+
+        <div id="fileTabArea" style="display:none;">
+          <div class="viewer-wrap">
+            <div class="viewer-bar">
+              <span id="fileTabBarLabel">📎 Fichier</span>
+              <div class="spacer"></div>
+              <a id="fileTabDownload" href="#" download style="display:none;">Télécharger ↓</a>
+            </div>
+            <div class="viewer-editbar" id="fileTabEditbar">
+              <input type="file" id="fileTabInput" style="flex:1;">
+              <button id="fileTabClear" class="cancel" style="padding:9px 12px;">Retirer</button>
+            </div>
+            <div id="fileTabPreviewWrap" style="display:none;"></div>
+            <div class="viewer-empty" id="fileTabEmpty">Aucun fichier pour cet onglet.</div>
+          </div>
+        </div>
       </section>
 
     </div>
@@ -1844,10 +1930,10 @@
       catch { return { count: 0, until: 0 }; }
     }
     function setAttempts(key, o) { localStorage.setItem(key, JSON.stringify(o)); }
-    function registerFailure(key) {
+    function registerFailure(key, lockoutMs = 5 * 60 * 1000) {
       const a = getAttempts(key);
       a.count += 1;
-      if (a.count >= 3) { a.until = Date.now() + 5 * 60 * 1000; a.count = 0; }
+      if (a.count >= 3) { a.until = Date.now() + lockoutMs; a.count = 0; }
       setAttempts(key, a);
     }
     function registerSuccess(key) { setAttempts(key, { count: 0, until: 0 }); }
@@ -1920,7 +2006,7 @@
           document.body.classList.remove("gate-locked");
           document.removeEventListener("keydown", onKeydown);
         } else {
-          registerFailure(GATE_KEY);
+          registerFailure(GATE_KEY, 30 * 1000);
           if (showLockout()) return;
           errEl.textContent = "Code incorrect";
           dotsWrap.classList.add("shake");
@@ -1961,7 +2047,8 @@
       text: { emoji: "📝", label: "Texte" },
       site: { emoji: "🌐", label: "Site" },
       video: { emoji: "🎬", label: "Vidéo" },
-      folder: { emoji: "📁", label: "Dossier" }
+      folder: { emoji: "📁", label: "Dossier" },
+      file: { emoji: "📎", label: "Fichier" }
     };
     function getTypeDefs() {
       const saved = (state.meta && state.meta.typeDefs) || {};
@@ -1969,7 +2056,8 @@
         text: { ...DEFAULT_TYPE_DEFS.text, ...(saved.text || {}) },
         site: { ...DEFAULT_TYPE_DEFS.site, ...(saved.site || {}) },
         video: { ...DEFAULT_TYPE_DEFS.video, ...(saved.video || {}) },
-        folder: { ...DEFAULT_TYPE_DEFS.folder, ...(saved.folder || {}) }
+        folder: { ...DEFAULT_TYPE_DEFS.folder, ...(saved.folder || {}) },
+        file: { ...DEFAULT_TYPE_DEFS.file, ...(saved.file || {}) }
       };
     }
     let state = {
@@ -2022,6 +2110,13 @@
     sheet.addEventListener("mouseup", saveSelection);
     sheet.addEventListener("keyup", saveSelection);
     sheet.addEventListener("focus", saveSelection);
+    /* filet de sécurité : garde toujours la sélection à jour, y compris juste
+       après un execCommand (gras puis italique à la suite, etc.) — sans ça,
+       le 2e clic sur un bouton de mise en forme réutilisait une sélection
+       périmée et le curseur "sautait" ou rien ne s'appliquait. */
+    document.addEventListener("selectionchange", () => {
+      if (document.activeElement === sheet) saveSelection();
+    });
     try { document.execCommand("styleWithCSS", false, true); } catch (e) { }
 
     /* ===================== contraste automatique (évite le texte invisible en changeant de thème) ===================== */
@@ -2076,6 +2171,14 @@
     const videoTabEmpty = document.getElementById("videoTabEmpty");
     const videoTabEditbar = document.getElementById("videoTabEditbar");
     const videoTabUrlInput = document.getElementById("videoTabUrlInput");
+    const fileTabArea = document.getElementById("fileTabArea");
+    const fileTabBarLabel = document.getElementById("fileTabBarLabel");
+    const fileTabDownload = document.getElementById("fileTabDownload");
+    const fileTabEditbar = document.getElementById("fileTabEditbar");
+    const fileTabInput = document.getElementById("fileTabInput");
+    const fileTabClear = document.getElementById("fileTabClear");
+    const fileTabPreviewWrap = document.getElementById("fileTabPreviewWrap");
+    const fileTabEmpty = document.getElementById("fileTabEmpty");
 
     /* ===================== thème clair / sombre / auto ===================== */
     const THEME_KEY = "c109_theme";
@@ -2397,7 +2500,7 @@
         <div class="rowtitle" spellcheck="false">${escapeHtml(st.title)}</div>
         <div class="rowmeta">${escapeHtml(td.label)}${st.type === "folder" ? " · " + (state.subTabs[st.id] || []).length + " élément" + ((state.subTabs[st.id] || []).length > 1 ? "s" : "") : ""}</div>
       </div>
-      ${unlocked ? `<div class="rowbtns">${idx > 0 ? '<button class="rowbtn up" title="Monter">↑</button>' : ""}${idx < items.length - 1 ? '<button class="rowbtn down" title="Descendre">↓</button>' : ""}<button class="rowbtn edit" title="Modifier">✎</button><button class="rowbtn del" title="Supprimer">✕</button></div>` : ""}
+      ${unlocked ? `<div class="rowbtns">${idx > 0 ? '<button class="rowbtn up" title="Monter">↑</button>' : ""}${idx < items.length - 1 ? '<button class="rowbtn down" title="Descendre">↓</button>' : ""}<button class="rowbtn move" title="Déplacer">⇄</button><button class="rowbtn edit" title="Modifier">✎</button><button class="rowbtn del" title="Supprimer">✕</button></div>` : ""}
       <span class="chev">›</span>`;
         el.addEventListener("click", (e) => {
           if (e.target.closest(".rowbtns")) return;
@@ -2431,6 +2534,10 @@
             e.stopPropagation();
             openSubModal(st);
           });
+          el.querySelector(".move").addEventListener("click", (e) => {
+            e.stopPropagation();
+            openMoveModal(st);
+          });
           el.querySelector(".del").addEventListener("click", (e) => {
             e.stopPropagation();
             const mainId = currentMainId;
@@ -2463,6 +2570,51 @@
       }
     }
 
+    /* ===================== déplacer un sous-onglet vers un autre dossier ===================== */
+    function collectContainers(excludeId) {
+      const list = [];
+      function walk(containerId, breadcrumb) {
+        if (containerId === excludeId) return;
+        list.push({ id: containerId, label: breadcrumb });
+        (state.subTabs[containerId] || []).forEach(ch => {
+          if (ch.type === "folder") walk(ch.id, breadcrumb + " › " + ch.title);
+        });
+      }
+      state.mainTabs.forEach(t => walk(t.id, t.title));
+      return list;
+    }
+    function openMoveModal(st) {
+      const fromId = currentMainId;
+      const destinations = collectContainers(st.type === "folder" ? st.id : null)
+        .filter(d => d.id !== fromId);
+      overlay.classList.add("show");
+      modal.className = "modal wide";
+      modal.innerHTML = `
+    <h2>Déplacer « ${escapeHtml(st.title)} »</h2>
+    ${destinations.length ? `<div class="movelist" id="moveList"></div>` : `<p style="color:var(--ink-soft); font-size:14px;">Aucune autre destination disponible.</p>`}
+    <button class="cancel" id="moveCancel">Annuler</button>
+  `;
+      const moveList = document.getElementById("moveList");
+      if (moveList) {
+        destinations.forEach(d => {
+          const btn = document.createElement("button");
+          btn.className = "movedest";
+          btn.textContent = d.label;
+          btn.addEventListener("click", () => {
+            state.subTabs[fromId] = (state.subTabs[fromId] || []).filter(x => x.id !== st.id);
+            if (!state.subTabs[d.id]) state.subTabs[d.id] = [];
+            state.subTabs[d.id].push(st);
+            overlay.classList.remove("show");
+            renderSub();
+            queueSave();
+            showToast(`Déplacé vers « ${d.label.split(" › ").pop()} »`);
+          });
+          moveList.appendChild(btn);
+        });
+      }
+      document.getElementById("moveCancel").addEventListener("click", () => overlay.classList.remove("show"));
+    }
+
     function openSubModal(existing) {
       let type = existing ? existing.type : "text";
       const defs = getTypeDefs();
@@ -2477,6 +2629,7 @@
       <button type="button" id="pickText">${defs.text.emoji} ${escapeHtml(defs.text.label)}</button>
       <button type="button" id="pickSite">${defs.site.emoji} ${escapeHtml(defs.site.label)}</button>
       <button type="button" id="pickVideo">${defs.video.emoji} ${escapeHtml(defs.video.label)}</button>
+      <button type="button" id="pickFile">${defs.file.emoji} ${escapeHtml(defs.file.label)}</button>
       <button type="button" id="pickFolder">${defs.folder.emoji} ${escapeHtml(defs.folder.label)}</button>
     </div>
     <div id="urlWrap" style="display:none;">
@@ -2493,6 +2646,7 @@
       const btnText = document.getElementById("pickText");
       const btnSite = document.getElementById("pickSite");
       const btnVideo = document.getElementById("pickVideo");
+      const btnFile = document.getElementById("pickFile");
       const btnFolder = document.getElementById("pickFolder");
       titleField.value = existing ? existing.title : "";
       urlField.value = existing && existing.url ? existing.url : "";
@@ -2500,6 +2654,7 @@
         btnText.classList.toggle("picked", type === "text");
         btnSite.classList.toggle("picked", type === "site");
         btnVideo.classList.toggle("picked", type === "video");
+        btnFile.classList.toggle("picked", type === "file");
         btnFolder.classList.toggle("picked", type === "folder");
         urlWrap.style.display = (type === "site" || type === "video") ? "block" : "none";
         if (type === "video") {
@@ -2514,6 +2669,7 @@
       btnText.addEventListener("click", () => { type = "text"; refreshType(); });
       btnSite.addEventListener("click", () => { type = "site"; refreshType(); });
       btnVideo.addEventListener("click", () => { type = "video"; refreshType(); });
+      btnFile.addEventListener("click", () => { type = "file"; refreshType(); });
       btnFolder.addEventListener("click", () => { type = "folder"; refreshType(); });
       titleField.focus();
       document.getElementById("subSave").addEventListener("click", () => {
@@ -2551,18 +2707,28 @@
       if (st.type === "site") {
         textArea.style.display = "none";
         videoTabArea.style.display = "none";
+        fileTabArea.style.display = "none";
         siteArea.style.display = "block";
         editContentBtn.style.display = "none";
         renderViewer(st);
       } else if (st.type === "video") {
         textArea.style.display = "none";
         siteArea.style.display = "none";
+        fileTabArea.style.display = "none";
         videoTabArea.style.display = "block";
         editContentBtn.style.display = "none";
         renderVideoTab(st);
+      } else if (st.type === "file") {
+        textArea.style.display = "none";
+        siteArea.style.display = "none";
+        videoTabArea.style.display = "none";
+        fileTabArea.style.display = "block";
+        editContentBtn.style.display = "none";
+        renderFileTab(st);
       } else {
         siteArea.style.display = "none";
         videoTabArea.style.display = "none";
+        fileTabArea.style.display = "none";
         textArea.style.display = "block";
         editContentBtn.style.display = unlocked ? "inline-flex" : "none";
         if (document.activeElement === sheet) {
@@ -2580,6 +2746,64 @@
         if (!unlocked) ribbon.classList.remove("open");
       }
     }
+
+    function renderFileTab(st) {
+      const defs = getTypeDefs();
+      if (fileTabBarLabel) fileTabBarLabel.textContent = `${defs.file.emoji} ${defs.file.label}`;
+      fileTabEditbar.classList.toggle("show", unlocked);
+      fileTabInput.value = "";
+      if (st.fileData) {
+        fileTabPreviewWrap.style.display = "flex";
+        fileTabEmpty.style.display = "none";
+        fileTabDownload.style.display = "inline";
+        fileTabDownload.href = st.fileData;
+        fileTabDownload.download = st.fileName || "fichier";
+        if ((st.fileMime || "").includes("pdf")) {
+          fileTabPreviewWrap.innerHTML = `<iframe src="${st.fileData}"></iframe>`;
+        } else {
+          const icon = (st.fileMime || "").startsWith("image/") ? "🖼️" : "📄";
+          fileTabPreviewWrap.innerHTML = `
+            <div class="filecard">
+              <span class="fc-icon">${icon}</span>
+              <span class="fc-name">${escapeHtml(st.fileName || "Fichier")}</span>
+              <a class="fc-dl" href="${st.fileData}" download="${escapeHtml(st.fileName || "fichier")}">Télécharger</a>
+            </div>`;
+        }
+      } else {
+        fileTabPreviewWrap.style.display = "none";
+        fileTabPreviewWrap.innerHTML = "";
+        fileTabDownload.style.display = "none";
+        fileTabEmpty.style.display = "flex";
+        fileTabEmpty.textContent = unlocked ? "Aucun fichier — choisis-en un ci-dessus." : "Aucun fichier pour cet onglet.";
+      }
+    }
+    fileTabInput.addEventListener("change", () => {
+      const st = (state.subTabs[currentMainId] || []).find(x => x.id === currentSubId);
+      if (!st || !unlocked) return;
+      const file = fileTabInput.files[0];
+      if (!file) return;
+      if (file.size > 6 * 1024 * 1024) {
+        showToast("Fichier volumineux : ça peut ralentir la sauvegarde");
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        st.fileData = reader.result;
+        st.fileName = file.name;
+        st.fileMime = file.type;
+        renderFileTab(st);
+        queueSave();
+        showToast("Fichier ajouté");
+      };
+      reader.readAsDataURL(file);
+    });
+    fileTabClear.addEventListener("click", () => {
+      const st = (state.subTabs[currentMainId] || []).find(x => x.id === currentSubId);
+      if (!st || !unlocked) return;
+      delete st.fileData; delete st.fileName; delete st.fileMime;
+      renderFileTab(st);
+      queueSave();
+      showToast("Fichier retiré");
+    });
 
     function renderVideoTab(st) {
       const defs = getTypeDefs();
@@ -2749,6 +2973,23 @@
       restoreSelection(); document.execCommand("fontName", false, e.target.value);
       state.contents[currentSubId] = sheet.innerHTML; queueSave();
     });
+    const fontFamilySelect = document.getElementById("fontFamily");
+    const fontFamilyLabel = document.getElementById("fontFamilyLabel");
+    let fontFamilyIndex = 0;
+    function applyFontFamily(index) {
+      if (!unlocked) return;
+      const opts = fontFamilySelect.options;
+      fontFamilyIndex = (index + opts.length) % opts.length;
+      fontFamilySelect.selectedIndex = fontFamilyIndex;
+      fontFamilyLabel.textContent = opts[fontFamilyIndex].textContent;
+      restoreSelection();
+      document.execCommand("fontName", false, opts[fontFamilyIndex].value);
+      state.contents[currentSubId] = sheet.innerHTML; queueSave();
+    }
+    document.getElementById("fontFamilyDown").addEventListener("mousedown", (e) => e.preventDefault());
+    document.getElementById("fontFamilyDown").addEventListener("click", () => applyFontFamily(fontFamilyIndex - 1));
+    document.getElementById("fontFamilyUp").addEventListener("mousedown", (e) => e.preventDefault());
+    document.getElementById("fontFamilyUp").addEventListener("click", () => applyFontFamily(fontFamilyIndex + 1));
     document.getElementById("insertCase").addEventListener("mousedown", (e) => e.preventDefault());
     document.getElementById("insertCase").addEventListener("click", () => {
       if (!unlocked) return;
@@ -3267,18 +3508,11 @@
     </p>
     ${unlocked ? `
     <label>Types de contenu</label>
+    ${Object.keys(DEFAULT_TYPE_DEFS).map(k => `
     <div class="typedef-row">
-      <input type="text" class="typedef-emoji" id="tdEmoji-text" maxlength="4" value="${getTypeDefs().text.emoji}">
-      <input type="text" class="typedef-label" id="tdLabel-text" value="${escapeHtml(getTypeDefs().text.label)}" placeholder="Nom du type">
-    </div>
-    <div class="typedef-row">
-      <input type="text" class="typedef-emoji" id="tdEmoji-site" maxlength="4" value="${getTypeDefs().site.emoji}">
-      <input type="text" class="typedef-label" id="tdLabel-site" value="${escapeHtml(getTypeDefs().site.label)}" placeholder="Nom du type">
-    </div>
-    <div class="typedef-row">
-      <input type="text" class="typedef-emoji" id="tdEmoji-video" maxlength="4" value="${getTypeDefs().video.emoji}">
-      <input type="text" class="typedef-label" id="tdLabel-video" value="${escapeHtml(getTypeDefs().video.label)}" placeholder="Nom du type">
-    </div>
+      <input type="text" class="typedef-emoji" id="tdEmoji-${k}" maxlength="4" value="${getTypeDefs()[k].emoji}">
+      <input type="text" class="typedef-label" id="tdLabel-${k}" value="${escapeHtml(getTypeDefs()[k].label)}" placeholder="Nom du type">
+    </div>`).join("")}
     <button class="cancel" id="saveTypeDefsBtn">Enregistrer les types</button>
     <label>Logo</label>
     <p style="background:var(--surface-2); padding:12px 14px; border-radius:12px; font-size:13px; line-height:1.6;">
@@ -3292,12 +3526,11 @@
       const saveTypeDefsBtn = document.getElementById("saveTypeDefsBtn");
       if (saveTypeDefsBtn) {
         saveTypeDefsBtn.addEventListener("click", () => {
-          const next = { text: {}, site: {}, video: {} };
-          ["text", "site", "video"].forEach(k => {
+          const next = {};
+          Object.keys(DEFAULT_TYPE_DEFS).forEach(k => {
             const emoji = document.getElementById(`tdEmoji-${k}`).value.trim();
             const label = document.getElementById(`tdLabel-${k}`).value.trim();
-            next[k].emoji = emoji || DEFAULT_TYPE_DEFS[k].emoji;
-            next[k].label = label || DEFAULT_TYPE_DEFS[k].label;
+            next[k] = { emoji: emoji || DEFAULT_TYPE_DEFS[k].emoji, label: label || DEFAULT_TYPE_DEFS[k].label };
           });
           state.meta.typeDefs = next;
           renderMeta();
