@@ -1206,6 +1206,11 @@
       display: flex;
       gap: 8px;
       margin-top: 4px;
+      flex-wrap: wrap;
+    }
+
+    .typechoice button {
+      min-width: 80px;
     }
 
     .typechoice button {
@@ -1955,14 +1960,16 @@
     const DEFAULT_TYPE_DEFS = {
       text: { emoji: "📝", label: "Texte" },
       site: { emoji: "🌐", label: "Site" },
-      video: { emoji: "🎬", label: "Vidéo" }
+      video: { emoji: "🎬", label: "Vidéo" },
+      folder: { emoji: "📁", label: "Dossier" }
     };
     function getTypeDefs() {
       const saved = (state.meta && state.meta.typeDefs) || {};
       return {
         text: { ...DEFAULT_TYPE_DEFS.text, ...(saved.text || {}) },
         site: { ...DEFAULT_TYPE_DEFS.site, ...(saved.site || {}) },
-        video: { ...DEFAULT_TYPE_DEFS.video, ...(saved.video || {}) }
+        video: { ...DEFAULT_TYPE_DEFS.video, ...(saved.video || {}) },
+        folder: { ...DEFAULT_TYPE_DEFS.folder, ...(saved.folder || {}) }
       };
     }
     let state = {
@@ -2139,6 +2146,24 @@
     });
 
     /* ===================== navigation entre écrans ===================== */
+    let navPath = []; // chaîne des id de dossiers (onglet principal + sous-dossiers imbriqués)
+    function getContainerInfo(id) {
+      const t = state.mainTabs.find(x => x.id === id);
+      if (t) return { title: t.title, color: t.color };
+      for (const key in state.subTabs) {
+        const found = (state.subTabs[key] || []).find(x => x.id === id);
+        if (found) return { title: found.title, color: found.color };
+      }
+      return null;
+    }
+    function purgeContainer(id) {
+      const children = state.subTabs[id] || [];
+      delete state.subTabs[id];
+      children.forEach(child => {
+        if (child.type === "folder") purgeContainer(child.id);
+        else delete state.contents[child.id];
+      });
+    }
     function showScreen(name, direction) {
       [screenHome, screenSub, screenContent].forEach(s => s.classList.remove("visible", "enter-fwd", "enter-back"));
       const el = name === "home" ? screenHome : name === "sub" ? screenSub : screenContent;
@@ -2148,30 +2173,50 @@
     }
     function goHome(push) {
       stopAllMedia();
+      navPath = [];
       currentMainId = null; currentSubId = null;
       renderHome();
       showScreen("home", "back");
       if (push !== false) history.pushState({ view: "home" }, "");
     }
-    function openMain(mainId, push) {
+    function enterSubPath(path, push) {
       stopAllMedia();
-      currentMainId = mainId; currentSubId = null;
+      navPath = path.slice();
+      currentMainId = navPath[navPath.length - 1] ?? null;
+      currentSubId = null;
       renderSub();
       showScreen("sub", "fwd");
-      if (push !== false) history.pushState({ view: "sub", mainId }, "");
+      if (push !== false) history.pushState({ view: "sub", navPath: navPath.slice() }, "");
     }
-    function openSub(mainId, subId, push) {
+    function openMain(mainId, push) {
+      enterSubPath([mainId], push);
+    }
+    function openFolder(folderId) {
+      enterSubPath([...navPath, folderId], true);
+    }
+    function openSub(subId, push) {
       stopAllMedia();
-      currentMainId = mainId; currentSubId = subId;
+      currentSubId = subId;
       renderContent();
       showScreen("content", "fwd");
-      if (push !== false) history.pushState({ view: "content", mainId, subId }, "");
+      if (push !== false) history.pushState({ view: "content", navPath: navPath.slice(), subId }, "");
     }
     window.addEventListener("popstate", (e) => {
       const s = e.state;
       if (!s || s.view === "home") { goHome(false); return; }
-      if (s.view === "sub") { openMain(s.mainId, false); return; }
-      if (s.view === "content") { openSub(s.mainId, s.subId, false); return; }
+      if (s.view === "sub") {
+        enterSubPath(s.navPath || (s.mainId ? [s.mainId] : []), false);
+        return;
+      }
+      if (s.view === "content") {
+        stopAllMedia();
+        navPath = (s.navPath || (s.mainId ? [s.mainId] : [])).slice();
+        currentMainId = navPath[navPath.length - 1] ?? null;
+        currentSubId = s.subId;
+        renderContent();
+        showScreen("content", "back");
+        return;
+      }
     });
     document.getElementById("backFromSub").addEventListener("click", () => history.back());
     document.getElementById("backFromContent").addEventListener("click", () => history.back());
@@ -2326,8 +2371,8 @@
 
     /* ===================== rendu : sous-onglets ===================== */
     function renderSub() {
-      const t = state.mainTabs.find(x => x.id === currentMainId);
-      subScreenTitle.textContent = t ? t.title : "—";
+      const info = getContainerInfo(currentMainId);
+      subScreenTitle.textContent = info ? info.title : "—";
       subList.innerHTML = "";
       const items = state.subTabs[currentMainId] || [];
       if (!items.length) {
@@ -2350,13 +2395,14 @@
       <span class="typeicon" style="background:${st.color}; color:#fff;">${td.emoji}</span>
       <div class="rowtext">
         <div class="rowtitle" spellcheck="false">${escapeHtml(st.title)}</div>
-        <div class="rowmeta">${escapeHtml(td.label)}</div>
+        <div class="rowmeta">${escapeHtml(td.label)}${st.type === "folder" ? " · " + (state.subTabs[st.id] || []).length + " élément" + ((state.subTabs[st.id] || []).length > 1 ? "s" : "") : ""}</div>
       </div>
       ${unlocked ? `<div class="rowbtns">${idx > 0 ? '<button class="rowbtn up" title="Monter">↑</button>' : ""}${idx < items.length - 1 ? '<button class="rowbtn down" title="Descendre">↓</button>' : ""}<button class="rowbtn edit" title="Modifier">✎</button><button class="rowbtn del" title="Supprimer">✕</button></div>` : ""}
       <span class="chev">›</span>`;
         el.addEventListener("click", (e) => {
           if (e.target.closest(".rowbtns")) return;
-          openSub(currentMainId, st.id);
+          if (st.type === "folder") openFolder(st.id);
+          else openSub(st.id);
         });
         if (unlocked) {
           const upBtn = el.querySelector(".up");
@@ -2399,7 +2445,8 @@
                 if (view === "sub" && currentMainId === mainId) renderSub();
               },
               () => {
-                delete state.contents[st.id];
+                if (st.type === "folder") purgeContainer(st.id);
+                else delete state.contents[st.id];
                 queueSave();
               }
             );
@@ -2430,6 +2477,7 @@
       <button type="button" id="pickText">${defs.text.emoji} ${escapeHtml(defs.text.label)}</button>
       <button type="button" id="pickSite">${defs.site.emoji} ${escapeHtml(defs.site.label)}</button>
       <button type="button" id="pickVideo">${defs.video.emoji} ${escapeHtml(defs.video.label)}</button>
+      <button type="button" id="pickFolder">${defs.folder.emoji} ${escapeHtml(defs.folder.label)}</button>
     </div>
     <div id="urlWrap" style="display:none;">
       <label id="urlWrapLabel">Adresse du site</label>
@@ -2445,12 +2493,14 @@
       const btnText = document.getElementById("pickText");
       const btnSite = document.getElementById("pickSite");
       const btnVideo = document.getElementById("pickVideo");
+      const btnFolder = document.getElementById("pickFolder");
       titleField.value = existing ? existing.title : "";
       urlField.value = existing && existing.url ? existing.url : "";
       function refreshType() {
         btnText.classList.toggle("picked", type === "text");
         btnSite.classList.toggle("picked", type === "site");
         btnVideo.classList.toggle("picked", type === "video");
+        btnFolder.classList.toggle("picked", type === "folder");
         urlWrap.style.display = (type === "site" || type === "video") ? "block" : "none";
         if (type === "video") {
           urlWrapLabel.textContent = `Adresse — ${defs.video.label}`;
@@ -2464,20 +2514,27 @@
       btnText.addEventListener("click", () => { type = "text"; refreshType(); });
       btnSite.addEventListener("click", () => { type = "site"; refreshType(); });
       btnVideo.addEventListener("click", () => { type = "video"; refreshType(); });
+      btnFolder.addEventListener("click", () => { type = "folder"; refreshType(); });
       titleField.focus();
       document.getElementById("subSave").addEventListener("click", () => {
         const title = titleField.value.trim() || "Sans titre";
         const url = urlField.value.trim();
         const hasUrl = type === "site" || type === "video";
         if (existing) {
+          if (existing.type === "folder" && type !== "folder" && (state.subTabs[existing.id] || []).length) {
+            showToast("Impossible : ce dossier contient des éléments");
+            return;
+          }
           existing.title = title;
           existing.type = type;
           existing.url = hasUrl ? url : "";
+          if (type === "folder" && !state.subTabs[existing.id]) state.subTabs[existing.id] = [];
         } else {
           const st = { id: uid(), title, type, url: hasUrl ? url : "", color: randomTabColor() };
           if (!state.subTabs[currentMainId]) state.subTabs[currentMainId] = [];
           state.subTabs[currentMainId].push(st);
           if (type === "text") state.contents[st.id] = "";
+          if (type === "folder") state.subTabs[st.id] = [];
         }
         overlay.classList.remove("show");
         renderSub();
